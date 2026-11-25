@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Tile Rotation Puzzle</title>
+  <title>Aerial Interchange Tile-Rotation Puzzle</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- Pixelated Retro Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+
   <style>
     * {
       box-sizing: border-box;
@@ -20,54 +23,48 @@
       padding: 0;
       width: 100%;
       height: 100%;
-      overflow: hidden;
       background-color: #ffffff;
-      font-family: 'Press Start 2P', monospace;
+      overflow: hidden;
+      touch-action: manipulation;
     }
 
-    /* Strictly NO CSS transitions or rotation animations on tiles */
+    /* Strictly zero animation on tile rotations */
     .puzzle-tile {
       transition: none !important;
       animation: none !important;
+      will-change: transform;
       cursor: pointer;
-      display: block;
       background-repeat: no-repeat;
       transform-origin: center center;
     }
 
-    .board-solved .puzzle-tile {
-      cursor: default;
-    }
-
-    /* Crisp retro pixel text with no background box */
+    /* Crisp retro pixel text with no background box, no stroke, and no shadow */
     .pixel-prompt {
       font-family: 'Press Start 2P', monospace;
       color: #ffffff;
-      text-shadow:
-        -2px -2px 0 #000000,
-         2px -2px 0 #000000,
-        -2px  2px 0 #000000,
-         2px  2px 0 #000000,
-         0px  4px 8px rgba(0, 0, 0, 0.9);
-      line-height: 1.6;
+      font-size: clamp(8px, 1.35vw, 12px);
+      -webkit-text-stroke: 0;
+      text-shadow: none;
+      background: transparent;
+      line-height: 1.5;
       letter-spacing: 0.04em;
     }
   </style>
 </head>
-<body class="w-screen h-screen bg-white flex items-center justify-center overflow-hidden">
+<body class="w-full h-full bg-white flex items-center justify-center overflow-hidden">
 
-  <!-- Hidden file input used ONLY if sandbox environment cannot resolve uploaded image path -->
-  <input type="file" id="fallbackFileInput" accept="image/*" class="hidden" />
+  <!-- Hidden file picker fallback only used if sandbox blocks local image files -->
+  <input id="fallbackFileInput" type="file" accept="image/*" class="hidden" />
 
-  <!-- Centered Puzzle Stage -->
-  <main id="stageArea" class="relative w-full h-full flex items-center justify-center p-2 sm:p-4">
-    <div id="boardWrapper" class="relative flex items-center justify-center">
-      <!-- Single Fixed Medium Grid of Square Tiles -->
-      <div id="puzzleGrid" class="grid board-playing w-full h-full"></div>
+  <!-- Centered Vertical Game Stage -->
+  <main id="stageArea" class="w-full h-full flex items-center justify-center p-2 bg-white">
+    <div id="boardWrapper" class="relative overflow-hidden bg-white">
+      <!-- Vertical 4x8 Medium Square Grid (32 true 1:1 squares) -->
+      <div id="puzzleGrid" class="grid grid-cols-4 grid-rows-8 w-full h-full gap-0"></div>
 
-      <!-- Minimal Pixelated Prompt Overlay (No background box, no extra text) -->
+      <!-- Minimal Pixelated Prompt Overlay (No background box, no stroke, no extra text) -->
       <div id="attractOverlay" class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none px-4 text-center">
-        <span class="pixel-prompt text-sm sm:text-xl md:text-2xl uppercase">
+        <span class="pixel-prompt uppercase">
           TAP ANYWHERE TO START
         </span>
       </div>
@@ -76,17 +73,17 @@
 
   <script>
     /**
-     * Ultra-Minimalist Digital Tile-Rotation Puzzle
-     * - Uses exact uploaded image ('for puzzel2.jpg') unmodified without cropping or color changes
-     * - Single fixed medium square grid (8 columns x 4 rows of true 1:1 squares)
+     * Ultra-Minimalist Vertical Digital Tile-Rotation Puzzle
+     * - Orients the exact uploaded image vertically (90° portrait orientation) with zero color edits
+     * - Single fixed vertical medium square grid (4 columns x 8 rows = 32 true 1:1 squares)
      * - Continuous instant 90-degree random rotations on open until user taps anywhere
      * - Instant 0ms 90-degree clockwise tile rotation on tap during solve
      */
 
     const state = {
       mode: 'ATTRACT', // 'ATTRACT' | 'PLAYING' | 'SOLVED'
-      cols: 8,
-      rows: 4,
+      cols: 4,
+      rows: 8,
       angles: [],
       tileElements: [],
       attractInterval: null,
@@ -101,8 +98,30 @@
     const fallbackFileInput = document.getElementById('fallbackFileInput');
 
     /**
+     * Rotates a loaded image 90 degrees clockwise onto an offscreen canvas
+     * so a landscape image fills the vertical 4x8 portrait grid cleanly without distortion.
+     */
+    function orientImageVertically(img) {
+      if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+      if (img.naturalHeight >= img.naturalWidth) return img.src;
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalHeight;
+        canvas.height = img.naturalWidth;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+        return canvas.toDataURL('image/jpeg', 0.96);
+      } catch (err) {
+        return img.src;
+      }
+    }
+
+    /**
      * Resolves the exact uploaded image ('for puzzel2_2.jpg' first, then 'for puzzel2.jpg')
-     * without restrictive crossOrigin attributes so it renders cleanly in all environments.
+     * and orients it vertically for the 4x8 portrait grid.
      */
     function resolveExactImage() {
       const candidates = [
@@ -132,7 +151,8 @@
 
           img.onload = () => {
             if (img.naturalWidth > 0) {
-              state.imageUrl = candidateUrl;
+              const verticalUrl = orientImageVertically(img) || candidateUrl;
+              state.imageUrl = verticalUrl;
               state.imageLoaded = true;
               resolve(img);
             } else {
@@ -152,7 +172,7 @@
     }
 
     /**
-     * Applies the current imageUrl across all 32 square tiles cleanly.
+     * Applies the current imageUrl across all 32 vertical square tiles cleanly.
      */
     function applyImageToTiles(url) {
       state.imageUrl = url;
@@ -169,28 +189,25 @@
     }
 
     /**
-     * Builds the single fixed medium grid (8x4) of exact 1:1 square tiles,
+     * Builds the single fixed vertical medium grid (4x8) of exact 1:1 square tiles,
      * slicing the exact image seamlessly with zero borders or gaps.
      */
     function buildPuzzleGrid() {
       const { cols, rows, imageUrl } = state;
-      const totalTiles = cols * rows;
+      const total = cols * rows;
 
-      state.angles = new Array(totalTiles).fill(0);
-      state.tileElements = [];
       puzzleGrid.innerHTML = '';
+      state.angles = new Array(total).fill(0);
+      state.tileElements = [];
 
-      puzzleGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-      puzzleGrid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
-
-      for (let idx = 0; idx < totalTiles; idx++) {
-        const r = Math.floor(idx / cols);
-        const c = idx % cols;
+      for (let i = 0; i < total; i++) {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
 
         const tile = document.createElement('div');
-        tile.className = 'puzzle-tile w-full h-full';
+        tile.className = 'puzzle-tile relative w-full h-full aspect-square overflow-hidden';
+        tile.dataset.index = String(i);
 
-        // Slice the exact unmodified image across the 8x4 grid without distortion
         const posX = cols > 1 ? (c / (cols - 1)) * 100 : 0;
         const posY = rows > 1 ? (r / (rows - 1)) * 100 : 0;
 
@@ -198,39 +215,44 @@
         tile.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
         tile.style.backgroundPosition = `${posX}% ${posY}%`;
 
-        // Rotate individual square 90° clockwise instantaneously when tapped in PLAYING mode
         tile.addEventListener('pointerdown', (e) => {
-          if (state.mode === 'PLAYING') {
-            e.stopPropagation();
-            rotateSingleTile(idx);
+          if (state.mode !== 'PLAYING') return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (!state.imageLoaded) {
+            fallbackFileInput.click();
+            return;
           }
+
+          rotateTile(i);
         });
 
-        state.tileElements.push(tile);
         puzzleGrid.appendChild(tile);
+        state.tileElements.push(tile);
       }
 
       fitBoardToViewport();
     }
 
     /**
-     * Sizes the centered board so every tile is a true 1:1 square fitting within the viewport.
+     * Sizes the centered vertical board so every tile is a true 1:1 square fitting within the viewport.
      */
     function fitBoardToViewport() {
       const stageRect = stageArea.getBoundingClientRect();
-      const availW = Math.max(240, stageRect.width - 16);
-      const availH = Math.max(120, stageRect.height - 16);
+      const availW = Math.max(140, stageRect.width - 16);
+      const availH = Math.max(280, stageRect.height - 16);
 
       const gridRatio = state.cols / state.rows;
-      let boardW = availW;
-      let boardH = boardW / gridRatio;
+      let boardH = availH;
+      let boardW = boardH * gridRatio;
 
-      if (boardH > availH) {
-        boardH = availH;
-        boardW = boardH * gridRatio;
+      if (boardW > availW) {
+        boardW = availW;
+        boardH = boardW / gridRatio;
       }
 
-      const squareSize = Math.floor(boardW / state.cols);
+      const squareSize = Math.floor(boardH / state.rows);
       boardWrapper.style.width = `${squareSize * state.cols}px`;
       boardWrapper.style.height = `${squareSize * state.rows}px`;
     }
@@ -238,7 +260,7 @@
     /**
      * Applies instantaneous 90-degree rotation with ZERO animation.
      */
-    function applyTileAngleInstant(index, angle) {
+    function setTileAngle(index, angle) {
       const normalized = ((angle % 360) + 360) % 360;
       state.angles[index] = normalized;
       const tile = state.tileElements[index];
@@ -248,111 +270,128 @@
     }
 
     /**
-     * Starts the kinetic attract/video mode where all squares continuously
-     * snap to random 90-degree rotations on their axis until tapped.
+     * Rotates a single tile 90 degrees clockwise on tap and checks for puzzle completion.
      */
-    function startAttractMode() {
-      state.mode = 'ATTRACT';
-      puzzleGrid.classList.remove('board-solved');
-      puzzleGrid.classList.add('board-playing');
-      attractOverlay.classList.remove('hidden');
-
-      const angles = [0, 90, 180, 270];
-
-      for (let i = 0; i < state.angles.length; i++) {
-        applyTileAngleInstant(i, angles[Math.floor(Math.random() * 4)]);
-      }
-
-      state.attractInterval = setInterval(() => {
-        if (state.mode !== 'ATTRACT') return;
-        for (let i = 0; i < state.angles.length; i++) {
-          if (Math.random() < 0.65) {
-            const current = state.angles[i];
-            const choices = angles.filter((a) => a !== current);
-            applyTileAngleInstant(i, choices[Math.floor(Math.random() * choices.length)]);
-          }
-        }
-      }, 160);
+    function rotateTile(index) {
+      if (state.mode !== 'PLAYING') return;
+      setTileAngle(index, state.angles[index] + 90);
+      checkSolved();
     }
 
     /**
-     * Freezes auto-rotation immediately and hides the prompt when tapped anywhere.
+     * Checks if all 32 tiles are upright (0°); if solved, restarts video mode on next tap.
      */
-    function freezeAndStartPlaying() {
-      if (state.mode !== 'ATTRACT') return;
+    function checkSolved() {
+      const allUpright = state.angles.every((deg) => deg === 0);
+      if (allUpright) {
+        state.mode = 'SOLVED';
+      }
+    }
 
-      clearInterval(state.attractInterval);
-      state.attractInterval = null;
+    /**
+     * Starts the continuous kinetic video attract loop where random tiles snap to
+     * random 90-degree orientations until the user taps anywhere on the screen.
+     */
+    function startAttractMode() {
+      stopAttractMode();
+      state.mode = 'ATTRACT';
+      attractOverlay.classList.remove('hidden');
+
+      const total = state.cols * state.rows;
+      const validAngles = [0, 90, 180, 270];
+
+      // Initial scramble
+      for (let i = 0; i < total; i++) {
+        const randAngle = validAngles[Math.floor(Math.random() * validAngles.length)];
+        setTileAngle(i, randAngle);
+      }
+
+      // Rapid instant-snap updates (no smooth animation)
+      state.attractInterval = setInterval(() => {
+        if (state.mode !== 'ATTRACT') return;
+        const batchCount = Math.max(4, Math.floor(total * 0.25));
+        for (let b = 0; b < batchCount; b++) {
+          const idx = Math.floor(Math.random() * total);
+          const current = state.angles[idx];
+          const choices = validAngles.filter((a) => a !== current);
+          const next = choices[Math.floor(Math.random() * choices.length)];
+          setTileAngle(idx, next);
+        }
+      }, 140);
+    }
+
+    /**
+     * Stops the attract loop.
+     */
+    function stopAttractMode() {
+      if (state.attractInterval) {
+        clearInterval(state.attractInterval);
+        state.attractInterval = null;
+      }
+    }
+
+    /**
+     * Freezes the board when the user taps anywhere, guaranteeing a solvable scrambled state.
+     */
+    function freezeAndStartGame() {
+      stopAttractMode();
       state.mode = 'PLAYING';
       attractOverlay.classList.add('hidden');
 
-      // Ensure at least several tiles require rotation so it isn't already solved on freeze
-      if (state.angles.every((a) => a === 0)) {
-        const nonZero = [90, 180, 270];
-        for (let i = 0; i < state.angles.length; i++) {
-          if (Math.random() < 0.7) {
-            applyTileAngleInstant(i, nonZero[Math.floor(Math.random() * 3)]);
-          }
-        }
+      if (state.angles.every((deg) => deg === 0)) {
+        const idx = Math.floor(Math.random() * state.angles.length);
+        setTileAngle(idx, 90);
       }
     }
 
-    /**
-     * Rotates a single square 90 degrees clockwise instantaneously (no animation).
-     */
-    function rotateSingleTile(index) {
-      if (state.mode !== 'PLAYING') return;
-
-      const nextAngle = (state.angles[index] + 90) % 360;
-      applyTileAngleInstant(index, nextAngle);
-
-      if (state.angles.every((angle) => angle === 0)) {
-        state.mode = 'SOLVED';
-        puzzleGrid.classList.remove('board-playing');
-        puzzleGrid.classList.add('board-solved');
-      }
-    }
-
-    // Tap anywhere on screen to stop the auto-rotation video and begin solving
+    // Tap anywhere on screen during ATTRACT to freeze and play, or after SOLVED to restart
     document.addEventListener('pointerdown', (e) => {
-      if (!state.imageLoaded && e.target !== fallbackFileInput) {
-        fallbackFileInput.click();
-        return;
-      }
       if (state.mode === 'ATTRACT') {
         e.preventDefault();
-        freezeAndStartPlaying();
+        freezeAndStartGame();
+      } else if (state.mode === 'SOLVED') {
+        e.preventDefault();
+        startAttractMode();
       }
     });
 
-    // Silent drag-and-drop or file-select fallback ONLY when sandbox cannot resolve local filename
-    document.addEventListener('dragover', (e) => {
-      if (!state.imageLoaded) e.preventDefault();
-    });
-
+    // Support drag-and-drop or fallback file selection if sandbox blocks local image files
+    document.addEventListener('dragover', (e) => e.preventDefault());
     document.addEventListener('drop', (e) => {
       if (!state.imageLoaded && e.dataTransfer && e.dataTransfer.files[0]) {
         e.preventDefault();
         const objectUrl = URL.createObjectURL(e.dataTransfer.files[0]);
-        state.imageLoaded = true;
-        applyImageToTiles(objectUrl);
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          state.imageLoaded = true;
+          applyImageToTiles(orientImageVertically(tempImg) || objectUrl);
+        };
+        tempImg.src = objectUrl;
       }
     });
 
     fallbackFileInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) {
         const objectUrl = URL.createObjectURL(e.target.files[0]);
-        state.imageLoaded = true;
-        applyImageToTiles(objectUrl);
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          state.imageLoaded = true;
+          applyImageToTiles(orientImageVertically(tempImg) || objectUrl);
+        };
+        tempImg.src = objectUrl;
       }
     });
 
     window.addEventListener('resize', fitBoardToViewport);
 
-    window.addEventListener('DOMContentLoaded', async () => {
-      await resolveExactImage();
+    // Initialize on load
+    window.addEventListener('load', async () => {
       buildPuzzleGrid();
       startAttractMode();
+      const loadedImg = await resolveExactImage();
+      if (loadedImg) {
+        applyImageToTiles(state.imageUrl);
+      }
     });
   </script>
 </body>
