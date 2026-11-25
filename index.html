@@ -79,6 +79,7 @@
       angles: [],
       tileElements: [],
       attractInterval: null,
+      solvedTimeout: null,
       imageUrl: 'for%20puzzel2.jpg',
       imageLoaded: false
     };
@@ -96,7 +97,6 @@
     function orientImageVertically(img) {
       if (!img || !img.naturalWidth || !img.naturalHeight) return null;
 
-      // Always rotate 90° clockwise if the source image is wider than it is tall
       if (img.naturalWidth > img.naturalHeight) {
         try {
           const canvas = document.createElement('canvas');
@@ -248,11 +248,22 @@
       const allUpright = state.angles.every((deg) => deg === 0);
       if (allUpright) {
         state.mode = 'SOLVED';
+        // Show the completed image for 1.5 seconds, then automatically resume shuffling
+        state.solvedTimeout = setTimeout(() => {
+          if (state.mode === 'SOLVED') {
+            startAttractMode();
+          }
+        }, 1500);
       }
     }
 
     function startAttractMode() {
       stopAttractMode();
+      if (state.solvedTimeout) {
+        clearTimeout(state.solvedTimeout);
+        state.solvedTimeout = null;
+      }
+
       state.mode = 'ATTRACT';
       attractOverlay.classList.remove('hidden');
 
